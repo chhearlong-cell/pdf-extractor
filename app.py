@@ -4,11 +4,9 @@ import json
 import os
 import tempfile
 from io import BytesIO
-from pathlib import Path
 from typing import Dict
 
 from flask import Flask, Response, jsonify, render_template, request, send_file
-from werkzeug.utils import secure_filename
 
 from pdf_extractor import PDFExtractor
 
@@ -73,8 +71,7 @@ def export_result():
     if not isinstance(result, dict):
         return jsonify({"error": "Missing extraction result"}), 400
 
-    safe_name = secure_filename(str(result.get("filename", "extracted"))) or "extracted"
-    filename_root = Path(safe_name).stem
+    filename_root = "extracted"
 
     if export_format == "json":
         content = extractor.to_json(result)
