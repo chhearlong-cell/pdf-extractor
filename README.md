@@ -22,9 +22,12 @@ pip install -r requirements.txt
 
 ```python
 from pdf_extractor import PDFExtractor
+from pathlib import Path
 
 extractor = PDFExtractor(use_ocr=True, ocr_lang="eng")
 result = extractor.extract("/absolute/path/to/file.pdf")
+# Path objects are also supported:
+result_from_path = extractor.extract(Path("/absolute/path/to/file.pdf"))
 
 print(result["full_text"])
 print(extractor.to_json(result))

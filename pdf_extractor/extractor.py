@@ -77,7 +77,7 @@ class PDFExtractor:
                 results.append(
                     {
                         "file_path": str(pdf_path),
-                        "error": str(exc),
+                        "error": f"{type(exc).__name__}: {exc}",
                         "page_count": 0,
                         "full_text": "",
                         "pages": [],
@@ -124,6 +124,7 @@ class PDFExtractor:
 
             needs_ocr = force_ocr or (self.use_ocr and len(text) < self.min_text_length)
             if needs_ocr:
+                # PdfReader pages are iterated with 1-based idx, OCR renderer expects 0-based page index.
                 ocr_text = self._ocr_page(path, idx - 1)
                 if ocr_text:
                     text = ocr_text
