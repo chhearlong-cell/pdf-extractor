@@ -57,7 +57,9 @@ class PDFExtractor:
         return str(result.get("full_text", ""))
 
     @staticmethod
-    def to_csv(results: List[Dict[str, object]]) -> str:
+    def to_csv(results: List[Dict[str, object]] | Dict[str, object]) -> str:
+        if isinstance(results, dict):
+            results = [results]
         output = StringIO()
         writer = csv.writer(output)
         writer.writerow(["filename", "page", "source", "text"])

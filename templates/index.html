@@ -232,9 +232,13 @@
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       const dispo = response.headers.get('Content-Disposition') || '';
-      const filenameMatch = dispo.match(/filename=\"?([^\";]+)\"?/i);
+      const utfFilename = dispo.match(/filename\*=UTF-8''([^;]+)/i);
+      const quotedFilename = dispo.match(/filename=\"([^\"]+)\"/i);
+      const plainFilename = dispo.match(/filename=([^;]+)/i);
+      const resolvedFilename = utfFilename ? decodeURIComponent(utfFilename[1]) :
+        (quotedFilename ? quotedFilename[1] : (plainFilename ? plainFilename[1].trim() : null));
       link.href = url;
-      link.download = filenameMatch ? filenameMatch[1] : `extracted.${format}`;
+      link.download = resolvedFilename || `extracted.${format}`;
       document.body.appendChild(link);
       link.click();
       link.remove();

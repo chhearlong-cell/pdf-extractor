@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict
 
 from flask import Flask, Response, jsonify, render_template, request, send_file
+from werkzeug.utils import secure_filename
 
 from pdf_extractor import PDFExtractor
 
@@ -33,6 +34,10 @@ def extract_stream() -> Response:
         upload.save(tmp.name)
         tmp_path = tmp.name
 
+    def cleanup_temp_file() -> None:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
     def stream_lines():
         pages = []
         full_text_parts = []
@@ -51,12 +56,12 @@ def extract_stream() -> Response:
             }
             yield json.dumps({"type": "complete", "result": result}) + "\n"
         except Exception as exc:  # pragma: no cover
-            yield json.dumps({"type": "error", "error": str(exc)}) + "\n"
-        finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+            app.logger.exception("PDF extraction failed")
+            yield json.dumps({"type": "error", "error": "Extraction failed."}) + "\n"
 
-    return Response(stream_lines(), mimetype="application/x-ndjson")
+    response = Response(stream_lines(), mimetype="application/x-ndjson")
+    response.call_on_close(cleanup_temp_file)
+    return response
 
 
 @app.post("/api/export")
@@ -68,7 +73,8 @@ def export_result():
     if not isinstance(result, dict):
         return jsonify({"error": "Missing extraction result"}), 400
 
-    filename_root = Path(str(result.get("filename", "extracted"))).stem
+    safe_name = secure_filename(str(result.get("filename", "extracted"))) or "extracted"
+    filename_root = Path(safe_name).stem
 
     if export_format == "json":
         content = extractor.to_json(result)

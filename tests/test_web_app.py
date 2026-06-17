@@ -55,6 +55,76 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("attachment", response.headers.get("Content-Disposition", ""))
         self.assertEqual(response.data.decode("utf-8"), "hello")
 
+    def test_export_json(self):
+        payload = {
+            "format": "json",
+            "result": {
+                "filename": "sample.pdf",
+                "page_count": 1,
+                "pages": [{"page": 1, "text": "hello", "source": "text"}],
+                "full_text": "hello",
+            },
+        }
+        response = self.client.post(
+            "/api/export",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        parsed = json.loads(response.data.decode("utf-8"))
+        self.assertEqual(parsed["filename"], "sample.pdf")
+
+    def test_export_csv(self):
+        payload = {
+            "format": "csv",
+            "result": {
+                "filename": "sample.pdf",
+                "page_count": 1,
+                "pages": [{"page": 1, "text": "hello", "source": "text"}],
+                "full_text": "hello",
+            },
+        }
+        response = self.client.post(
+            "/api/export",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        csv_output = response.data.decode("utf-8")
+        self.assertIn("filename,page,source,text", csv_output)
+        self.assertIn("sample.pdf,1,text,hello", csv_output)
+
+    def test_export_unsupported_format_returns_400(self):
+        payload = {
+            "format": "xml",
+            "result": {
+                "filename": "sample.pdf",
+                "page_count": 1,
+                "pages": [],
+                "full_text": "",
+            },
+        }
+        response = self.client.post(
+            "/api/export",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Unsupported format", response.get_json()["error"])
+
+    def test_export_missing_result_returns_400(self):
+        response = self.client.post(
+            "/api/export",
+            data=json.dumps({"format": "txt"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Missing extraction result", response.get_json()["error"])
+
 
 if __name__ == "__main__":
     unittest.main()
