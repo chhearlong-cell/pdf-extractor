@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Local PDF Data Extractor</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --accent: #2563eb;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #d1d5db;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111827;
+        --card: #1f2937;
+        --text: #f3f4f6;
+        --muted: #9ca3af;
+        --border: #374151;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 1rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      text-align: center;
+      transition: border-color .2s ease;
+    }
+    .dropzone.dragover { border-color: var(--accent); }
+    .buttons {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+    button {
+      padding: .6rem .9rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--card);
+      color: var(--text);
+      cursor: pointer;
+    }
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    button:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+    #preview {
+      min-height: 220px;
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .75rem;
+      overflow-wrap: anywhere;
+    }
+    .status { color: var(--muted); margin-top: .75rem; }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <section class="card">
+      <h1>PDF Data Extractor (Local)</h1>
+      <p>Drop a PDF file below. Processing happens locally on your machine.</p>
+      <div id="dropzone" class="dropzone" aria-label="Drop PDF here">
+        <p><strong>Drag & drop PDF here</strong> or choose a file</p>
+        <input id="fileInput" type="file" accept="application/pdf,.pdf" />
+      </div>
+      <div class="buttons">
+        <button id="extractBtn" class="primary" disabled>Extract Text</button>
+        <button id="downloadJson" disabled>Download JSON</button>
+        <button id="downloadCsv" disabled>Download CSV</button>
+        <button id="downloadTxt" disabled>Download TXT</button>
+      </div>
+      <p id="status" class="status">Select a PDF file to begin.</p>
+    </section>
+
+    <section class="card">
+      <h2>Real-time Preview</h2>
+      <div id="preview"></div>
+    </section>
+  </main>
+
+  <script>
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const extractBtn = document.getElementById('extractBtn');
+    const statusEl = document.getElementById('status');
+    const preview = document.getElementById('preview');
+    const exportButtons = {
+      json: document.getElementById('downloadJson'),
+      csv: document.getElementById('downloadCsv'),
+      txt: document.getElementById('downloadTxt')
+    };
+
+    let selectedFile = null;
+    let extractionResult = null;
+
+    function setStatus(message) {
+      statusEl.textContent = message;
+    }
+
+    function setFile(file) {
+      selectedFile = file;
+      extractionResult = null;
+      preview.textContent = '';
+      extractBtn.disabled = !selectedFile;
+      Object.values(exportButtons).forEach(btn => btn.disabled = true);
+      setStatus(file ? `Selected: ${file.name}` : 'Select a PDF file to begin.');
+    }
+
+    fileInput.addEventListener('change', (event) => {
+      const file = event.target.files?.[0];
+      setFile(file || null);
+    });
+
+    ['dragenter', 'dragover'].forEach(evt => {
+      dropzone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(evt => {
+      dropzone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+      });
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+      const file = e.dataTransfer?.files?.[0];
+      if (file) {
+        fileInput.files = e.dataTransfer.files;
+        setFile(file);
+      }
+    });
+
+    extractBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+      extractBtn.disabled = true;
+      preview.textContent = '';
+      setStatus('Processing PDF...');
+
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      const response = await fetch('/api/extract-stream', { method: 'POST', body: formData });
+      if (!response.ok || !response.body) {
+        const err = await response.json().catch(() => ({ error: 'Extraction failed' }));
+        setStatus(`Error: ${err.error || 'Extraction failed'}`);
+        extractBtn.disabled = false;
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const event = JSON.parse(line);
+
+          if (event.type === 'page') {
+            const text = event.page.text || '';
+            preview.textContent += `\n--- Page ${event.page.page} (${event.page.source}) ---\n${text}\n`;
+            setStatus(`Processed page ${event.page.page}...`);
+          } else if (event.type === 'complete') {
+            extractionResult = event.result;
+            setStatus(`Done. Extracted ${event.result.page_count} page(s).`);
+            Object.values(exportButtons).forEach(btn => btn.disabled = false);
+          } else if (event.type === 'error') {
+            setStatus(`Error: ${event.error}`);
+          }
+        }
+      }
+
+      extractBtn.disabled = false;
+    });
+
+    async function downloadFormat(format) {
+      if (!extractionResult) return;
+      const response = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format, result: extractionResult })
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Export failed' }));
+        setStatus(`Error: ${err.error || 'Export failed'}`);
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const dispo = response.headers.get('Content-Disposition') || '';
+      const utfFilename = dispo.match(/filename\*=UTF-8''([^;]+)/i);
+      const quotedFilename = dispo.match(/filename=\"([^\"]+)\"/i);
+      const plainFilename = dispo.match(/filename=([^;]+)/i);
+      const resolvedFilename = utfFilename ? decodeURIComponent(utfFilename[1]) :
+        (quotedFilename ? quotedFilename[1] : (plainFilename ? plainFilename[1].trim() : null));
+      link.href = url;
+      link.download = resolvedFilename || `extracted.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    exportButtons.json.addEventListener('click', () => downloadFormat('json'));
+    exportButtons.csv.addEventListener('click', () => downloadFormat('csv'));
+    exportButtons.txt.addEventListener('click', () => downloadFormat('txt'));
+  </script>
+</body>
+</html>
