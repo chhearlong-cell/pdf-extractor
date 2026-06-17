@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdf-extractor"
+version = "0.1.0"
+description = "PDF extraction with OCR fallback"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "pypdf>=4.2.0",
+  "pytesseract>=0.3.10",
+  "pypdfium2>=4.30.0",
+  "Pillow>=10.2.0",
+]
+
+[tool.setuptools]
+packages = ["pdf_extractor"]
